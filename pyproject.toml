@@ -1,0 +1,56 @@
+[project]
+name = "tt-distill"
+version = "0.1.0"
+description = "Test-Time Distillation Architecture via Latent Communication for Autonomous Agents"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "ASYNC",  # flake8-async
+    "S",      # flake8-bandit
+    "C4",     # flake8-comprehensions
+    "T20",    # flake8-print
+    "SIM",    # flake8-simplify
+    "RET",    # flake8-return
+    "PTH",    # flake8-use-pathlib
+    "PLC",    # pylint conventions
+    "PLE",    # pylint errors
+    "PLW",    # pylint warnings
+    "PERF",   # perflint
+    "RUF",    # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "PLC0415"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+explicit_package_bases = true
+warn_unreachable = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["llama.cpp", "data", "demos"]
