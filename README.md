@@ -3,7 +3,7 @@
 *(State of the Art as of March 2026)*
 
 **Repository:** [github.com/daemind/TT-Distill](https://github.com/daemind/TT-Distill)  
-**DOI:** [10.5281/zenodo.18827350](https://doi.org/10.5281/zenodo.18827350)
+**DOI:** [10.5281/zenodo.18905253](https://doi.org/10.5281/zenodo.18905253)
 
 ## Abstract
 

@@ -2,7 +2,7 @@
 
 This document provides a technical summary of the protocols, datasets, and results for the seven fundamental demonstrations of the TT-Distill architecture.
 
-**GitHub:** [github.com/daemind/TT-Distill](https://github.com/daemind/TT-Distill) | **DOI:** [10.5281/zenodo.18827350](https://doi.org/10.5281/zenodo.18827350)
+**GitHub:** [github.com/daemind/TT-Distill](https://github.com/daemind/TT-Distill) | **DOI:** [10.5281/zenodo.18905253](https://doi.org/10.5281/zenodo.18905253)
 
 ## ⚡ Setup: Enabling the Hardware Acceleration
 
