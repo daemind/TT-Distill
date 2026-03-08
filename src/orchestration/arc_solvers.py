@@ -1,4 +1,22 @@
-# arc_solvers.py
+"""ARC-AGI Heuristic Solver Engine with Composable Transformations.
+
+Implements deterministic strategies for solving ARC-AGI tasks via
+program synthesis by enumeration. Features:
+
+1. Atomic transformations (rotate, flip, color_map, etc.)
+2. Composable transformations (composition, repetition, tile, fractal)
+3. Logical operators (and, or, not, xor on masks)
+4. Invariant detection (color, shape, position, symmetry)
+
+Architecture:
+    for strategy in STRATEGIES:
+        if all(strategy(train_in) == train_out for train_in, train_out in pairs):
+            return strategy(test_input)
+
+Strategies are ordered from most specific to most general.
+"""
+
+# ruff: noqa
 
 from __future__ import annotations
 
