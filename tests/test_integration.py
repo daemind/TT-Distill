@@ -1,47 +1,50 @@
 import sys
 from pathlib import Path
+from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
+from typing import Any, Generator, cast
 
 import pytest
+import numpy as np
 
-# Mocking external heavyweight dependencies not present in TT-Distill source
-# This allows the integration logic itself to be rigorously tested.
-sys.modules["reflex_engine"] = MagicMock()
-sys.modules["src.orchestration.post_silicon"] = MagicMock()
-sys.modules["src.orchestration.maca_salon_bridge"] = MagicMock()
-
-from typing import Any, Generator, cast  # noqa: E402
-
-from src.orchestration.tt_distill_integration import (  # noqa: E402
+# TT-Distill Integration tests
+from src.orchestration.tt_distill_integration import (
     TTDistillConfig,
     TTDistillIntegration,
 )
-
 
 @pytest.fixture
 def mock_integration(tmp_path: Path) -> Generator[TTDistillIntegration, None, None]:
     """Fixture for TTDistillIntegration with mocked external agents."""
     model_file = tmp_path / "mock_s1.gguf"
-    # Create a physical mock file to satisfy Path(model_path).exists()
     model_file.write_text("mock")
+
+    db_path = tmp_path / "test_integration_vmem.db"
 
     config = TTDistillConfig(
         model_path=str(model_file),
         lora_path=None,
-        vector_db_path=str(tmp_path / "test_integration_vmem.db"),
+        vector_db_path=str(db_path),
     )
 
-    integration = TTDistillIntegration(config)
+    # Patch the heavyweight dependencies
+    with mock.patch("src.orchestration.tt_distill_integration.MultimodalReflexEngine"), \
+         mock.patch("src.orchestration.tt_distill_integration.PostSiliconController"), \
+         mock.patch("src.orchestration.tt_distill_integration.MACASalonBridge"), \
+         mock.patch("src.orchestration.tt_distill_integration.VectorMemory") as mock_vmem:
+        
+        # Setup mock_vmem to return a deterministic embedding for testing
+        vmem_instance = mock_vmem.return_value
+        vmem_instance.get_embedding.side_effect = lambda x: [0.1] * 128
+        vmem_instance.close = AsyncMock()
+        
+        integration = TTDistillIntegration(config)
 
-    # Mock specific methods that would call missing external logic
-    setattr(
-        integration.reflex_engine,
-        "query_reflex",
-        MagicMock(return_value=(10.0, "Mocked Response")),
-    )
-    setattr(integration.post_silicon, "run_optimization_loop", AsyncMock())
+        # Mock query_reflex
+        integration.reflex_engine.query_reflex = MagicMock(return_value=(10.0, "Mocked Response"))
+        integration.post_silicon.run_optimization_loop = AsyncMock()
 
-    yield integration
+        yield integration
 
     if model_file.exists():
         model_file.unlink()

@@ -196,6 +196,7 @@ class DualRobotSim:
         # --- TT-Distill Logic ---
         # Initialize the actual MoAGater from the library
         # Mock 'Gait Adapters' as tensors representing the controller state
+        self.moa_gater = MoAGater()
         self.dry_gait_adapter = {
             "kp": np.array([self.kp_normal]),
             "kv": np.array([self.kv_normal]),

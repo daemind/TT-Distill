@@ -43,7 +43,7 @@ class MoAGater:
         Strictly enforces the presence of the Metal O(1) swap backend.
         """
         self._last_preloaded_buffer: ctypes.c_void_p | None = None
-        
+
         # Load the custom Metal swapper (raises RuntimeError if missing)
         self._swapper = MetalDoRASwapper()
         logger.debug("MoAGater: Metal O(1) swap backend initialized")

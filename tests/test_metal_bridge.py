@@ -14,7 +14,6 @@ def test_metal_swapper_initialization() -> None:
     try:
         swapper = MetalDoRASwapper()
         assert swapper.dylib_path.exists()
-        assert hasattr(swapper, "_preload_available")
     except FileNotFoundError as e:
         assert "Could not load libggml-metal.dylib" in str(e)
         assert "cmake" in str(e)

@@ -57,7 +57,7 @@ async def vmem_temp(tmp_path: Path) -> AsyncGenerator[VectorMemory, None]:
         await db_path.unlink()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_vector_memory_topic_retrieval(vmem_temp: VectorMemory) -> None:
     """Verify that retrieval accurately distinguishes between different topics."""
     vmem = vmem_temp
@@ -86,7 +86,7 @@ async def test_vector_memory_topic_retrieval(vmem_temp: VectorMemory) -> None:
     assert results_food[0][0]["id"] == 3
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_vector_memory_persistence(tmp_path: Path) -> None:
     """Verify that documents persist after closing and reopening the DB."""
     db_path = Path(tmp_path) / "test_vmem_persistence.db"
@@ -119,7 +119,7 @@ async def test_vector_memory_persistence(tmp_path: Path) -> None:
         await db_path.unlink()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_vector_memory_empty_query(vmem_temp: VectorMemory) -> None:
     """Verify that empty queries don't crash the system."""
     if not vmem_temp.use_sqlite_vec:

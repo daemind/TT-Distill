@@ -90,7 +90,7 @@ def run_demo() -> None:
         table.add_row(
             label,
             f"{val:.6f} ms",
-            f"{speedup:,.0f}× faster",
+            f"{speedup:,.0f}x faster",
         )
 
     console.print(table)
@@ -107,7 +107,7 @@ def run_demo() -> None:
             f"[green]{median_ms:.6f} ms[/green] < {target_ms} ms target"
         )
         console.print(
-            f"   Speedup vs baseline: [bold yellow]{baseline_ms / median_ms:,.0f}×[/bold yellow]"
+            f"   Speedup vs baseline: [bold yellow]{baseline_ms / median_ms:,.0f}x[/bold yellow]"
         )
     else:
         console.print(
@@ -160,7 +160,7 @@ def run_demo() -> None:
         pipeline_table.add_row(
             label,
             f"{val:.6f} ms",
-            f"{speedup:,.0f}× faster",
+            f"{speedup:,.0f}x faster",
         )
 
     console.print(pipeline_table)
@@ -168,7 +168,7 @@ def run_demo() -> None:
     total_ms = timings["total_ms"]
     console.print(
         f"\n   ✅ Full pipeline: [bold green]{total_ms:.4f} ms[/bold green] "
-        f"([bold yellow]{baseline_ms / total_ms:,.0f}×[/bold yellow] faster than 215 ms)"
+        f"([bold yellow]{baseline_ms / total_ms:,.0f}x[/bold yellow] faster than 215 ms)"
     )
 
     # ── Summary ───────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ def run_demo() -> None:
             f"[bold green]Phase 4.3 + 4.4: Metal Backend Integration — VALIDATED[/bold green]\n\n"
             f"• Custom `ggml_backend_metal_swap_dora()` callable from Python\n"
             f"• O(1) pointer swap latency: [bold]{median_ms:.6f} ms[/bold] (median)\n"
-            f"• Speedup: [bold yellow]{baseline_ms / median_ms:,.0f}×[/bold yellow] "
+            f"• Speedup: [bold yellow]{baseline_ms / median_ms:,.0f}x[/bold yellow] "
             f"faster than the 215 ms graph re-creation baseline\n"
             f"• Spec target (< 5 ms): [bold green]ACHIEVED[/bold green]\n"
             f"• MoAGater pipeline wired: merge → preload → swap",

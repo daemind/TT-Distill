@@ -146,7 +146,7 @@ def test_moa_gater_metal_integration(tmp_adapters_dir: Path) -> None:
 
 def test_moa_merge_and_swap_pipeline(tmp_adapters_dir: Path) -> None:
     """Verify the full merge_and_swap pipeline."""
-    gater = MoAGater(enable_metal=True)
+    gater = MoAGater()
 
     adapters = [
         str(tmp_adapters_dir / "adapter_1.bin"),

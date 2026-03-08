@@ -45,6 +45,7 @@ class MetalDoRASwapper:
     For standalone benchmarking (without a live llama.cpp session), use
     `benchmark_swap_overhead()` which measures the raw CTypes call latency.
     """
+    _swap_fn: Any = None
 
     def __init__(self, dylib_path: Path | str | None = None) -> None:
         """Load the custom Metal dynamic library.
