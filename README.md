@@ -71,6 +71,11 @@ The most significant engineering breakthrough of TT-Distill is the destruction o
 * Utilizes a pre-allocated 256 MB Ring Buffer leveraging Apple Silicon's Unified Memory (`MTLResourceStorageModeShared`).
 * Eliminates Metal compute graph recreation, reducing the Hot-Swap latency of neural weights from 215 ms down to 0.0002 ms ($O(1)$ pointer swap).
 
+### Pillar 4: Cross-Platform Portability (Universal O(1))
+While the reference implementation is optimized for Apple Silicon Unified Memory, the TT-Distill protocol is designed for cross-platform hardware-agnostic acceleration:
+*   **Linux/Unix/Windows Staging:** The architecture supports O(1) swap on discrete GPUs via Host-Mapped Zero-Copy memory.
+*   **Technical Spec:** Detailed porting instructions for CUDA/Vulkan/DirectX can be found in the [Universal Zero-Copy Swap](plans/universal_zero_copy_swap.md) specification.
+
 ---
 
 ## 3. Empirical Performance and Benchmarks
