@@ -25,8 +25,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Default path to the custom-compiled libggml-metal.dylib
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_DYLIB_PATH = (
-    Path(__file__).resolve().parents[2]
+    _PROJECT_ROOT
     / "llama.cpp"
     / "build"
     / "src"
@@ -68,22 +69,48 @@ class MetalDoRASwapper:
 
         candidates.append(_DEFAULT_DYLIB_PATH)
 
+        # Proactively load dependencies (libggml-base) if on Darwin
+        # This helps resolve @rpath issues without manual symlinking.
+        if os.name == "posix" and os.uname().sysname == "Darwin":
+            base_candidates = [
+                _PROJECT_ROOT / "llama.cpp" / "build" / "src" / "libggml-base.dylib",
+                _PROJECT_ROOT / "llama.cpp" / "build" / "src" / "libggml-base.0.dylib",
+            ]
+            # Search in venv
+            venv_lib_dir = _PROJECT_ROOT / ".venv" / "lib"
+            if venv_lib_dir.exists():
+                for py_dir in venv_lib_dir.iterdir():
+                    if py_dir.is_dir() and py_dir.name.startswith("python"):
+                        candidate = py_dir / "site-packages" / "lib" / "libggml-base.dylib"
+                        if candidate.exists():
+                            base_candidates.append(candidate)
+
+            for base_c in base_candidates:
+                try:
+                    ctypes.CDLL(str(base_c))
+                    logger.debug("MetalDoRASwapper: Pre-loaded dependency %s", base_c.name)
+                except OSError:
+                    continue
+
         # Try loading directly via ctypes (bypasses os.stat sandbox issues)
         self._lib = None
         loaded_path = None
+        last_error = ""
         for candidate in candidates:
             try:
                 self._lib = ctypes.cdll.LoadLibrary(str(candidate))
                 loaded_path = candidate
                 break
-            except OSError:
+            except OSError as e:
+                last_error = str(e)
                 continue
 
         if self._lib is None:
             msg = (
                 "Could not load libggml-metal.dylib from any of: "
                 + ", ".join(str(c) for c in candidates)
-                + "\nPlease compile llama.cpp with the TT-Distill patches first:\n"
+                + f"\nLast error: {last_error}"
+                + "\n\nPlease compile llama.cpp with the TT-Distill patches first:\n"
                 "  cd llama.cpp && cmake -S ggml -B build -DGGML_METAL=ON "
                 "-DBUILD_SHARED_LIBS=ON && cmake --build build -j\n"
                 "Or set GGML_METAL_DYLIB=/path/to/libggml-metal.dylib"

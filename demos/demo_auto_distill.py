@@ -9,9 +9,10 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from rich.console import Console
 from src.agent_factory import AgentFactory
 from src.agent_spawner import AgentSpawner
-from src.db_manager import DBManager
 from src.llm_client import LLMClient
 from src.mcp_manager import MCPManager
+
+from src.db_manager import DBManager
 
 console = Console()
 

@@ -1,17 +1,16 @@
-import sys
 from pathlib import Path
+from typing import Any, Generator, cast
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
-from typing import Any, Generator, cast
 
 import pytest
-import numpy as np
 
 # TT-Distill Integration tests
 from src.orchestration.tt_distill_integration import (
     TTDistillConfig,
     TTDistillIntegration,
 )
+
 
 @pytest.fixture
 def mock_integration(tmp_path: Path) -> Generator[TTDistillIntegration, None, None]:
@@ -32,12 +31,12 @@ def mock_integration(tmp_path: Path) -> Generator[TTDistillIntegration, None, No
          mock.patch("src.orchestration.tt_distill_integration.PostSiliconController"), \
          mock.patch("src.orchestration.tt_distill_integration.MACASalonBridge"), \
          mock.patch("src.orchestration.tt_distill_integration.VectorMemory") as mock_vmem:
-        
+
         # Setup mock_vmem to return a deterministic embedding for testing
         vmem_instance = mock_vmem.return_value
         vmem_instance.get_embedding.side_effect = lambda x: [0.1] * 128
         vmem_instance.close = AsyncMock()
-        
+
         integration = TTDistillIntegration(config)
 
         # Mock query_reflex
