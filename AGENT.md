@@ -1,67 +1,37 @@
-# 🤖 AGENT.md: Strict Operational Protocol
+# 🤖 AGENT.md: Strict Metal O(1) Operational Protocol (TT-Distill)
 
-> **NOTICE**: This document defines the MANDATORY coding and operational standards for all agents operating within the Cybernetic Production Studio. Non-compliance is failure.
-
-## 🚫 Zero-Tolerance Policies
-1. **No Placeholders**: Do not use `// TODO`, `...`, or placeholder strings. Every line of code must be functional or structured for immediate implementation.
-2. **No Hallucinations**: You are physically truncated at the first `</tool_call>` or `<observation>`. Do not attempt to predict tool outputs.
-3. **No Unverified Reports**: Specialists must not be trusted. Validators **MUST** use tools (`read_file`, `grep`) to verify implementations.
+> **MANDATE**: This document defines the MANDATORY coding and operational standards for the TT-Distill engine. Non-compliance is failure. We build for high-frequency robotic latency (sub-millisecond).
 
 ---
 
-## 🛠️ Development Standards
+## 🚫 Zero-Tolerance Hardware Policies
 
-### 1. Test-Driven Development (TDD)
-- Every feature **MUST** have a comprehensive unit test suite **BEFORE** implementation.
-- Aim for 100% code coverage.
-- If a test fails, the task fails. Use the #Brainstorming salon to resolve.
-
-### 2. SOLID & Clean Code
-- **S**: Single Responsibility. No monolithic classes.
-- **O**: Open/Closed. Use interfaces and protocols for extendability.
-- **L**: Liskov Substitution. Subtypes must be substitutable.
-- **I**: Interface Segregation. Don't force dependencies on unused methods.
-- **D**: Dependency Inversion. Depend on abstractions, not concretions.
-
-### 3. Asynchronous Execution
-- Use `asyncio` for all I/O and agent spawning.
-- Maintain non-blocking operations to allow parallel agent orchestration.
+1.  **STRICT METAL REQUIREMENT**: No "fake" numpy fallbacks. If `libggml-metal.dylib` is missing or the symbols `ggml_metal_preload_dora`/`ggml_metal_swap_dora` are not found, the system **MUST** raise a `RuntimeError` at initialization.
+2.  **NO BYPASS**: Soft-checks like `if metal_available` for critical path logic are prohibited. The hardware is assumed present; code must fail fast if it isn't.
+3.  **NO PLACEHOLDERS**: Do not use `// TODO`, `...`, or placeholder simulations. Every line must be production-ready for Apple Silicon.
+4.  **PERFORMANCE SPEC**: Any O(1) swap transition exceeding **5ms** is a bug. Target median latency: **< 1ms**.
 
 ---
 
-## 🧠 Core Orchestration Logic
+## 🛠️ Tactical Standards
 
-### 📐 Recursive Task Subdivision
-- Tasks must be subdivided until they reach the **Atomic Threshold** (< 15 minutes of work).
-- Use `spawn_fractal_agent` for complex planning phases.
-- Spawn **Research/Fact-Checker** sub-agents to verify requirements before execution.
+### 1. Zero-Error Codebase
+- **Linting**: `ruff` must report 0 errors/warnings.
+- **Typing**: `mypy --strict` compliance for all core orchestration modules.
+- **Testing**: `pytest` must pass 100%. No skipped tests for hardware paths.
 
-### 🔗 Lineage & Breadcrumbs
-- Every agent must track its lineage: `Grandparent → Parent → Child`.
-- Maintain a clear audit trail of ancestry to prevent infinite recursion and loops.
-
-### 💬 Salon Logic (Conflict Resolution)
-When a task fails validation 2+ times, or inertia is detected, the **#Brainstorming** salon is triggered:
-- **IDEA** 💡: Propose a new technical route.
-- **CRITIQUE** 📝: Identify flaws in a proposal.
-- **RESEARCH** 🔍: Fetch external data or indexed skills.
-- **RESOLUTION** 🎯: Propose the final path forward based on consensus.
+### 2. Logic Hardening
+- **No Variable Shadowing**: Rigorous variable naming to prevent logical bugs in complex math solvers (e.g., ARC heuristics).
+- **Asynchronous Integrity**: Use `asyncio` for the consensus and distillation layers, but maintain blocking CTypes calls for the raw Metal swap to ensure atomic pointer exchange.
 
 ---
 
-## 📈 Rights & Quotas
-- Respect your `SpawnQuotaManager` limits.
-- Be aware of your specific `Civil Rights` (e.g., `spawn_agent`, `web_search`).
-- Every session has a **TTL (Time To Live)** and **Idle Timeout**. Optimize for efficiency.
+## ✅ Workflow: The Golden Hardware Loop
 
----
+1.  **Subdivide**: Break feature into atomic, hardware-testable units.
+2.  **TDD**: Write tests that verify both logic and the O(1) swap interaction.
+3.  **Implement**: Write Clean Code targeting the C++ Metal backend bridge.
+4.  **Verify**: Run `demos/demo_metal_swap.py` and `demos/demo_moa_resolver.py` to confirm hardware status: **ACTIVÉ**.
+5.  **Commit**: Only commit if sub-microsecond latency is maintained and linters are clean.
 
-## ✅ Workflow: The Golden Loop
-1. **Subdivide**: Break task into atomic units.
-2. **Research**: Verify facts with sub-agents if needed.
-3. **TDD**: Write tests for the atomic unit.
-4. **Implement**: Write Clean Code (No placeholders). Use `write_file` or `replace_in_file`.
-5. **Validate**: Force Validator agent to check work via tools.
-6. **Sutre (If Failed)**: Enter Salon for self-healing/brainstorming.
-
-**GO! Build with maximum rigor.**
+**NO SIMULATIONS. NO FALLBACKS. PURE HARDWARE.**
