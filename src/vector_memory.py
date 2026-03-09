@@ -22,6 +22,7 @@ Optimizations:
 """
 
 import asyncio
+import hashlib
 import json
 import math
 import os
@@ -72,6 +73,13 @@ class L1CacheConfig:
     eviction_policy: str = "lru"  # lru, fifo, random
     warmup_threshold: int = 10  # Warmup after N accesses
     hot_vector_threshold: int = 3  # Access count to promote to L1
+    # LSH parameters
+    lsh_num_hashes: int = 16  # Number of hash functions for LSH
+    lsh_bucket_size: int = 8  # Number of buckets per hash
+    lsh_threshold: float = 0.85  # Cosine similarity threshold for LSH match
+    # MD5 text cache
+    enable_text_cache: bool = True  # Enable MD5-based exact text matching
+    text_cache_max_size: int = 1000  # Max cached text queries
 
 
 @dataclass
@@ -134,23 +142,80 @@ class L1VectorCache:
         # L1 cache storage: vector_id -> (embedding, access_count, last_access)
         self._cache: OrderedDict[int, tuple[np.ndarray, int, float]] = OrderedDict()
 
-        # Hot vector index: hash(embedding) -> vector_id (for O(1) lookup)
-        self._hot_index: dict[int, int] = {}
+        # MD5 text cache for exact query matching (O(1) lookup)
+        self._text_cache: dict[str, int] = {}  # md5_hash -> vector_id
+        self._text_cache_lru: OrderedDict[str, None] = OrderedDict()
+
+        # LSH index: bucket_key -> list of vector_ids
+        # Each hash function creates buckets; vectors in same bucket are candidates
+        self._lsh_buckets: list[dict[int, list[int]]] = []
+        self._lsh_random_projections: list[np.ndarray] = []
+
+        # Initialize LSH structures
+        self._init_lsh()
 
         # Access tracking for warmup detection
         self._access_counts: dict[int, int] = Counter()
 
         logger.info(
             f"🗄️  L1 Vector Cache initialized (max_vectors={self.config.max_vectors}, "
-            f"dim={self.embedding_dim})"
+            f"dim={self.embedding_dim}, lsh_hashes={self.config.lsh_num_hashes})"
         )
 
-    def _compute_vector_hash(self, embedding: np.ndarray) -> int:
-        """Compute deterministic hash for vector lookup."""
-        return int(np.sum(embedding * 1000) % (2**31))
+    def _init_lsh(self) -> None:
+        """Initialize LSH with random projection matrices."""
+        # Create random projection matrices for each hash function
+        # Each matrix is (embedding_dim, lsh_bucket_size)
+        self._lsh_buckets = []
+        self._lsh_random_projections = []
 
-    def _promote_to_l1(self, vector_id: int, embedding: np.ndarray) -> None:
-        """Promote a vector to L1 cache."""
+        for _ in range(self.config.lsh_num_hashes):
+            # Random projection: project embedding to lower dimension
+            projection = np.random.randn(self.embedding_dim, self.config.lsh_bucket_size).astype(np.float32)
+            self._lsh_random_projections.append(projection)
+            # Initialize buckets for this hash function
+            self._lsh_buckets.append({i: [] for i in range(self.config.lsh_bucket_size)})
+
+        logger.debug(f"🔢 LSH initialized with {self.config.lsh_num_hashes} hash functions")
+
+    def _compute_md5_text_hash(self, text: str) -> str:
+        """Compute MD5 hash for exact text matching."""
+        return hashlib.md5(text.encode('utf-8')).hexdigest()  # noqa: S324 - MD5 is acceptable for exact text cache matching, not security
+
+    def _compute_lsh_signature(self, embedding: np.ndarray) -> tuple[int, ...]:
+        """
+        Compute LSH signature for embedding.
+
+        For each hash function:
+        1. Project embedding onto random basis
+        2. Quantize to bucket index (0 to lsh_bucket_size-1)
+
+        Returns tuple of bucket indices, one per hash function.
+        """
+        signature = []
+        for projection in self._lsh_random_projections:
+            # Project: (embedding_dim,) @ (embedding_dim, bucket_size) -> (bucket_size,)
+            projected = embedding @ projection
+            # Quantize: argmax gives bucket index
+            bucket_idx = int(np.argmax(projected))
+            signature.append(bucket_idx)
+        return tuple(signature)
+
+    def _get_lsh_candidates(self, signature: tuple[int, ...]) -> set[int]:
+        """
+        Get candidate vector_ids from LSH buckets.
+
+        A vector is a candidate if it shares at least one bucket with the query.
+        This provides approximate nearest neighbor search with O(1) lookup.
+        """
+        candidates: set[int] = set()
+        for hash_idx, bucket_idx in enumerate(signature):
+            bucket_vectors = self._lsh_buckets[hash_idx].get(bucket_idx, [])
+            candidates.update(bucket_vectors)
+        return candidates
+
+    def _promote_to_l1(self, vector_id: int, embedding: np.ndarray, text: str | None = None) -> None:
+        """Promote a vector to L1 cache with LSH and MD5 text indexing."""
         with self._lock:
             # Check if already in cache
             if vector_id in self._cache:
@@ -164,9 +229,25 @@ class L1VectorCache:
             timestamp = time.perf_counter()
             self._cache[vector_id] = (embedding.copy(), 1, timestamp)
 
-            # Add to hot index
-            vector_hash = self._compute_vector_hash(embedding)
-            self._hot_index[vector_hash] = vector_id
+            # Add to LSH buckets (for approximate nearest neighbor)
+            signature = self._compute_lsh_signature(embedding)
+            for hash_idx, bucket_idx in enumerate(signature):
+                self._lsh_buckets[hash_idx][bucket_idx].append(vector_id)
+
+            # Add to MD5 text cache if text provided
+            if self.config.enable_text_cache and text:
+                text_hash = self._compute_md5_text_hash(text)
+                self._text_cache[text_hash] = vector_id
+                # Update LRU order
+                if text_hash in self._text_cache_lru:
+                    self._text_cache_lru.move_to_end(text_hash)
+                else:
+                    self._text_cache_lru[text_hash] = None
+                    # Evict oldest if text cache full
+                    if len(self._text_cache_lru) > self.config.text_cache_max_size:
+                        oldest_text = next(iter(self._text_cache_lru))
+                        del self._text_cache_lru[oldest_text]
+                        self._text_cache.pop(oldest_text, None)
 
             # Track access
             self._access_counts[vector_id] = 1
@@ -177,16 +258,27 @@ class L1VectorCache:
                 logger.debug(f"🔥 Vector {vector_id} warmed up to L1 cache")
 
     def _evict_oldest(self) -> None:
-        """Evict the oldest vector from L1 cache."""
+        """Evict the oldest vector from L1 cache, LSH, and text cache."""
         if not self._cache:
             return
 
         # LRU eviction (oldest first)
-        vector_id, (embedding, _, _) = self._cache.popitem(last=False)
+        vector_id, (_embedding, _, _) = self._cache.popitem(last=False)
 
-        # Remove from hot index
-        vector_hash = self._compute_vector_hash(embedding)
-        self._hot_index.pop(vector_hash, None)
+        # Remove from LSH buckets (O(n) scan - acceptable for eviction)
+        for hash_idx in range(len(self._lsh_buckets)):
+            for bucket_idx in range(self.config.lsh_bucket_size):
+                if vector_id in self._lsh_buckets[hash_idx][bucket_idx]:
+                    self._lsh_buckets[hash_idx][bucket_idx].remove(vector_id)
+
+        # Remove from text cache (if vector_id was in text cache)
+        # We need to find which text_hash maps to this vector_id
+        text_to_remove = [
+            text_hash for text_hash, vid in self._text_cache.items() if vid == vector_id
+        ]
+        for text_hash in text_to_remove:
+            del self._text_cache[text_hash]
+            self._text_cache_lru.pop(text_hash, None)
 
         self.metrics.evictions += 1
         logger.debug(f"🗑️  Evicted vector {vector_id} from L1 cache")
@@ -226,12 +318,13 @@ class L1VectorCache:
 
     def get_by_embedding(self, embedding: np.ndarray) -> int | None:
         """
-        Get vector_id by embedding hash (explicit "pull" by content).
+        Get vector_id by embedding using LSH candidate retrieval.
 
         This enables content-based retrieval without knowing the vector_id:
-        1. Compute hash of query embedding (O(n) - ~1 µs)
-        2. Look up in hot index (O(1) - ~0.01 µs)
-        3. Return vector_id if found
+        1. Compute LSH signature (O(n) - ~10 µs for 2560-dim embedding)
+        2. Get candidate vectors from LSH buckets (O(1) - ~0.01 µs)
+        3. Verify with cosine similarity (O(n) - ~5 µs per candidate)
+        4. Return best matching vector_id
 
         Returns:
             int | None: Vector ID or None if not in L1
@@ -239,42 +332,63 @@ class L1VectorCache:
         start_time = time.perf_counter()
 
         with self._lock:
-            vector_hash = self._compute_vector_hash(embedding)
+            # Compute LSH signature
+            signature = self._compute_lsh_signature(embedding)
 
-            if vector_hash not in self._hot_index:
+            # Get candidate vectors from LSH buckets
+            candidates = self._get_lsh_candidates(signature)
+
+            if not candidates:
                 self.metrics.misses += 1
                 return None
 
-            vector_id = self._hot_index[vector_hash]
+            # Find best matching candidate using cosine similarity
+            best_vector_id: int | None = None
+            best_similarity = 0.0
 
-            # Verify embedding match (handle hash collisions)
-            cached_embedding, access_count, _last_access = self._cache[vector_id]
-            if np.allclose(embedding, cached_embedding, atol=1e-5):
+            # Normalize query embedding for cosine similarity
+            query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
+
+            for candidate_id in candidates:
+                if candidate_id not in self._cache:
+                    continue
+
+                cached_embedding, access_count, _last_access = self._cache[candidate_id]
+                # Compute cosine similarity
+                cached_norm = cached_embedding / (np.linalg.norm(cached_embedding) + 1e-8)
+                similarity = np.dot(query_norm, cached_norm)
+
+                if similarity > best_similarity and similarity >= self.config.lsh_threshold:
+                    best_similarity = similarity
+                    best_vector_id = candidate_id
+
+            if best_vector_id is not None:
+                cached_embedding, access_count, _last_access = self._cache[best_vector_id]
                 # Update access tracking
-                self._cache[vector_id] = (
+                self._cache[best_vector_id] = (
                     cached_embedding,
                     access_count + 1,
                     time.perf_counter(),
                 )
-                self._cache.move_to_end(vector_id)
+                self._cache.move_to_end(best_vector_id)
 
                 self.metrics.hits += 1
                 access_time = (time.perf_counter() - start_time) * 1_000_000
                 self.metrics.total_access_time_us += access_time
-                logger.debug(f"✅ L1 Cache hit by embedding ({access_time:.2f} µs)")
-                return vector_id
+                logger.debug(f"✅ L1 Cache LSH hit for vector {best_vector_id} (sim={best_similarity:.4f}, {access_time:.2f} µs)")
+                return best_vector_id
 
             self.metrics.misses += 1
             return None
 
-    def add(self, vector_id: int, embedding: np.ndarray) -> None:
+    def add(self, vector_id: int, embedding: np.ndarray, text: str | None = None) -> None:
         """Add a vector to L1 cache (with warmup detection)."""
         with self._lock:
             self._access_counts[vector_id] += 1
 
             # Promote to L1 if threshold reached
             if self._access_counts[vector_id] >= self.config.warmup_threshold:
-                self._promote_to_l1(vector_id, embedding)
+                self._promote_to_l1(vector_id, embedding, text)
 
     def pull_vector(
         self, query: str, embedding: np.ndarray
@@ -283,14 +397,15 @@ class L1VectorCache:
         Explicit "pull" mechanism for model 0.5B context retrieval.
 
         This is the OPTIMIZED path for System 1 RAG with the 0.5B model:
-        1. Compute hash of query embedding (O(n) - ~1 µs)
-        2. Look up in hot index (O(1) - ~0.01 µs)
+        1. Check MD5 text cache for exact query match (O(1) - ~0.5 µs)
+        2. If not found, use LSH for approximate nearest neighbor (O(n) - ~15 µs)
         3. Return (vector_id, embedding) if found, (None, None) otherwise
 
         Performance Targets:
-            - L1 hit: <0.1 µs
-            - L1 miss: <1 µs (fast rejection)
-            - Overall average: <0.5 µs with 90%+ hit rate
+            - MD5 text hit: <1 µs
+            - LSH hit: <20 µs
+            - L1 miss: <5 µs (fast rejection)
+            - Overall average: <5 µs with 90%+ hit rate
 
         Returns:
             tuple[int | None, np.ndarray | None]: (vector_id, embedding) or (None, None)
@@ -298,36 +413,78 @@ class L1VectorCache:
         start_time = time.perf_counter()
 
         with self._lock:
-            vector_hash = self._compute_vector_hash(embedding)
+            # Step 1: Check MD5 text cache for exact match (fastest path)
+            if self.config.enable_text_cache:
+                text_hash = self._compute_md5_text_hash(query)
+                if text_hash in self._text_cache:
+                    vector_id = self._text_cache[text_hash]
+                    if vector_id in self._cache:
+                        cached_embedding, access_count, _last_access = self._cache[vector_id]
+                        # Update access tracking
+                        self._cache[vector_id] = (
+                            cached_embedding,
+                            access_count + 1,
+                            time.perf_counter(),
+                        )
+                        self._cache.move_to_end(vector_id)
 
-            if vector_hash not in self._hot_index:
+                        self.metrics.hits += 1
+                        access_time = (time.perf_counter() - start_time) * 1_000_000
+                        self.metrics.total_access_time_us += access_time
+                        logger.debug(
+                            f"✅ L1 Cache MD5 text hit for '{query[:50]}...' ({access_time:.2f} µs)"
+                        )
+                        return vector_id, cached_embedding
+
+            # Step 2: Use LSH for approximate nearest neighbor
+            signature = self._compute_lsh_signature(embedding)
+            candidates = self._get_lsh_candidates(signature)
+
+            if not candidates:
                 self.metrics.misses += 1
                 access_time = (time.perf_counter() - start_time) * 1_000_000
                 logger.debug(
-                    f"❌ L1 Cache miss for query '{query[:50]}...' ({access_time:.2f} µs)"
+                    f"❌ L1 Cache LSH miss for query '{query[:50]}...' ({access_time:.2f} µs)"
                 )
                 return None, None
 
-            vector_id = self._hot_index[vector_hash]
+            # Find best matching candidate using cosine similarity
+            best_vector_id: int | None = None
+            best_similarity = 0.0
 
-            # Verify embedding match (handle hash collisions)
-            cached_embedding, access_count, _last_access = self._cache[vector_id]
-            if np.allclose(embedding, cached_embedding, atol=1e-5):
+            # Normalize query embedding for cosine similarity
+            query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
+
+            for candidate_id in candidates:
+                if candidate_id not in self._cache:
+                    continue
+
+                cached_embedding, access_count, _last_access = self._cache[candidate_id]
+                # Compute cosine similarity
+                cached_norm = cached_embedding / (np.linalg.norm(cached_embedding) + 1e-8)
+                similarity = np.dot(query_norm, cached_norm)
+
+                if similarity > best_similarity and similarity >= self.config.lsh_threshold:
+                    best_similarity = similarity
+                    best_vector_id = candidate_id
+
+            if best_vector_id is not None:
+                cached_embedding, access_count, _last_access = self._cache[best_vector_id]
                 # Update access tracking
-                self._cache[vector_id] = (
+                self._cache[best_vector_id] = (
                     cached_embedding,
                     access_count + 1,
                     time.perf_counter(),
                 )
-                self._cache.move_to_end(vector_id)
+                self._cache.move_to_end(best_vector_id)
 
                 self.metrics.hits += 1
                 access_time = (time.perf_counter() - start_time) * 1_000_000
                 self.metrics.total_access_time_us += access_time
                 logger.debug(
-                    f"✅ L1 Cache pull hit for '{query[:50]}...' ({access_time:.2f} µs)"
+                    f"✅ L1 Cache LSH hit for '{query[:50]}...' (sim={best_similarity:.4f}, {access_time:.2f} µs)"
                 )
-                return vector_id, cached_embedding
+                return best_vector_id, cached_embedding
 
             self.metrics.misses += 1
             access_time = (time.perf_counter() - start_time) * 1_000_000
@@ -337,15 +494,26 @@ class L1VectorCache:
             return None, None
 
     def clear(self) -> None:
-        """Clear the L1 cache."""
+        """Clear the L1 cache, LSH, and text cache."""
         with self._lock:
             self._cache.clear()
-            self._hot_index.clear()
+            self._text_cache.clear()
+            self._text_cache_lru.clear()
+            # Clear LSH buckets
+            for hash_idx in range(len(self._lsh_buckets)):
+                for bucket_idx in range(self.config.lsh_bucket_size):
+                    self._lsh_buckets[hash_idx][bucket_idx].clear()
             self._access_counts.clear()
             logger.info("🗑️  L1 cache cleared")
 
     def get_stats(self) -> dict[str, Any]:
         """Get L1 cache statistics."""
+        # Count non-empty LSH buckets
+        total_lsh_buckets = sum(
+            sum(1 for bucket in buckets.values() if bucket)
+            for buckets in self._lsh_buckets
+        )
+
         return {
             "cache_size": len(self._cache),
             "max_vectors": self.config.max_vectors,
@@ -355,6 +523,10 @@ class L1VectorCache:
             "evictions": self.metrics.evictions,
             "warmups": self.metrics.warmups,
             "avg_access_us": f"{self.metrics.total_access_time_us / max(1, self.metrics.hits + self.metrics.misses):.2f}",
+            "text_cache_size": len(self._text_cache),
+            "text_cache_max_size": self.config.text_cache_max_size,
+            "lsh_buckets_used": total_lsh_buckets,
+            "lsh_total_buckets": len(self._lsh_buckets) * self.config.lsh_bucket_size,
         }
 
 
@@ -748,7 +920,7 @@ class VectorMemory:
         # Update L1 cache if enabled
         if self.l1_cache and isinstance(embedding, list):
             embedding_array = np.array(embedding, dtype=np.float32)
-            self.l1_cache.add(doc_id, embedding_array)
+            self.l1_cache.add(doc_id, embedding_array, text)
 
     async def search_async(
         self, query: str, top_k: int = 3
