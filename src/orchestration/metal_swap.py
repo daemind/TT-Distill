@@ -151,6 +151,24 @@ class MetalDoRASwapper:
             self.dylib_path,
         )
 
+    def is_available(self) -> bool:
+        """Check if the Metal O(1) swap backend is available.
+
+        Returns:
+            True if the library loaded successfully and required symbols are present.
+        """
+        if self._lib is None:
+            return False
+        try:
+            return (
+                hasattr(self, "_preload_fn") and
+                hasattr(self, "_swap_internal_fn") and
+                callable(self._preload_fn) and
+                callable(self._swap_internal_fn)
+            )
+        except Exception:
+            return False
+
     def preload(self, data_ptr: int, size: int) -> None:
         """Stage a buffer for the O(1) swap.
 
