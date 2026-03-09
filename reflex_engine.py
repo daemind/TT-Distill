@@ -60,6 +60,37 @@ class ReflexEngine:
 
         self.model = Llama(**llama_args)  # type: ignore[arg-type]
 
+    def query(self, prompt: str = STABILITY_PROMPT, max_tokens: int = 256, temperature: float = 0.7) -> tuple[float, str]:
+        """
+        Classique query method for complete responses (System 2 / Resolver mode)
+
+        Args:
+            prompt: Prompt text
+            max_tokens: Maximum tokens to generate (default: 256 for complete responses)
+            temperature: Sampling temperature (default: 0.7 for creative responses)
+
+        Returns:
+            tuple: (latency_ms, response_text)
+        """
+        start_time = time.perf_counter()
+
+        # Inférence complète (sans streaming, température configurable)
+        output = self.model(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=None,
+            echo=False,
+        )
+
+        end_time = time.perf_counter()
+        latency_ms = (end_time - start_time) * 1000
+
+        # Extraire la réponse
+        response_text = output["choices"][0]["text"] if output.get("choices") else ""  # type: ignore[index, union-attr]
+
+        return latency_ms, response_text
+
     def query_reflex(self, prompt: str = STABILITY_PROMPT) -> tuple[float, str]:
         """
         Exécuter un réflexe avec injection directe inputs_embeds
