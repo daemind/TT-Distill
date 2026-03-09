@@ -97,3 +97,106 @@ The TT-Distill architecture was benchmarked against highly complex, abstract vis
 TT-Distill demonstrates that the future of autonomous agents does not lie in scaling parameter counts to the trillions, nor in brute-forcing compute at test-time. It lies in algebraic compositionality and system-level memory routing.
 
 By uniting rigorous mathematical synthesis with microsecond-level C++ hardware optimization, TT-Distill allows a lightweight Edge model to behave like a continuous dynamical system. It proves that true intelligence is the ability to instantaneously forge and swap the geometric lenses through which a neural network perceives reality.
+
+---
+
+## 5. New Features: DoRA Blending Engine (Phase 1-3)
+
+The `dora_blender` branch introduces a complete neuro-endocrine system for automatic weight optimization:
+
+### Phase 1: Le Moteur de Fusion (DoRA Blending Engine)
+- **[`DoraBlender`](src/orchestration/dora_blender.py:63)**: CPU-based adapter blending with triple-buffered ring buffer to prevent GC-induced segfaults
+- **Blending Modes**: GEOMETRIC (weighted linear combination), TILING (spatial partitioning), HYBRID (combined)
+- **MCP Tools**: [`blend_adapters_manifold()`](src/orchestration/mcp_intelligence_manifold.py:204) for cocktail synaptique fusion
+
+### Phase 2: Le Tampon de Trajectoire Latente
+- **[`LatentTrajectoryBuffer`](src/orchestration/latent_trajectory.py:65)**: Short-term memory for tracking latent vectors with automatic tensor detachment to prevent VRAM leaks
+- **[`TrajectoryStore`](src/persistence/trajectory_store.py:22)**: JSON-based persistence for cross-session analysis
+
+### Phase 3: La Boucle d'Auto-Distillation
+- **[`AutoDistiller`](src/orchestration/auto_distiller.py:51)**: Neuro-endocrine feedback loop that adjusts weights on failure and crystallizes successful configurations
+- **MCP Tool**: [`crystallize_weights()`](src/orchestration/mcp_intelligence_manifold.py:267) for saving permanent instincts
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DoRA Blending Pipeline                       │
+├─────────────────────────────────────────────────────────────────┤
+│  [Expert A, Expert B, ...] + [w1, w2, ...]                      │
+│           ↓                                                     │
+│  DoraBlender.blend_adapters()  (CPU numpy)                      │
+│           ↓                                                     │
+│  Ring Buffer Serialization (triple-buffered)                    │
+│           ↓                                                     │
+│  Metal preload() + O(1) swap()  (< 0.001ms)                     │
+│           ↓                                                     │
+│  GPU uses fused weights                                         │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  Auto-Distillation Loop                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Solver attempts task → Success? ──No──→ Analyze trajectory     │
+│         ↓ Yes                                                    │
+│  Crystallize → Save .bin file → Register in manifold            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Performance Targets
+
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Metal Swap Only | < 0.001 ms | O(1) pointer swap |
+| Blend + Serialize | < 25 ms | CPU numpy operations |
+| Trajectory Buffer | O(1) append | FIFO eviction |
+| Crystallization | < 100 ms | Disk I/O bound |
+
+### Usage Example
+
+```python
+from src.orchestration.dora_blender import DoraBlender, BlendingMode
+from src.orchestration.auto_distiller import AutoDistiller
+from src.persistence.trajectory_store import TrajectoryStore
+from src.orchestration.latent_trajectory import LatentTrajectoryBuffer
+
+# Initialize blending engine
+blender = DoraBlender(blending_mode=BlendingMode.GEOMETRIC)
+
+# Blend adapters
+timings = blender.blend_and_swap(
+    adapters=["expert_a.bin", "expert_b.bin"],
+    gating_vector=[0.7, 0.3]
+)
+# timings = {"merge_ms": 12.5, "swap_ms": 0.0002, "total_ms": 12.51}
+
+# Initialize auto-distiller
+trajectory_store = TrajectoryStore("data/trajectories")
+distiller = AutoDistiller(
+    blender=blender,
+    trajectory_buffer=LatentTrajectoryBuffer(),
+    trajectory_store=trajectory_store,
+    max_attempts=5
+)
+
+# Run distillation loop
+result = distiller.distill(
+    task_data=arc_task,
+    initial_weights={"DihedralGroup": 0.5, "ColorField": 0.5},
+    solver_fn=my_solver
+)
+
+# Crystallize successful configuration
+if result.success:
+    print(f"Crystallized to: {result.crystallized_path}")
+```
+
+### Tests
+
+All components are fully tested:
+- [`test_dora_blender.py`](tests/test_dora_blender.py): 25 tests for blending engine
+- [`test_latent_trajectory.py`](tests/test_latent_trajectory.py): 20 tests for trajectory buffer
+- [`test_auto_distiller.py`](tests/test_auto_distiller.py): 20 tests for distillation loop
+- [`test_auto_distillation_loop.py`](tests/test_auto_distillation_loop.py): 12 integration tests
+
+Run tests: `pytest tests/test_dora_blender.py tests/test_latent_trajectory.py tests/test_auto_distiller.py tests/test_auto_distillation_loop.py -v`
